@@ -1,5 +1,5 @@
 // Set this to your actual backend endpoint!
-const BACKEND_URL = "https://your-backend-url/api/calculate"; // CHANGE THIS
+const BACKEND_URL = "/api/calculate"; // If deploying frontend and backend together, this works. Otherwise, set to your full backend URL.
 
 const GREEN_THRESHOLD_MINUTES_BEFORE_PITCH = 60; // Arrive 1 hour or more before first pitch
 const YELLOW_THRESHOLD_MINUTES_BEFORE_PITCH = 0;  // Arrive between 59 minutes before and exactly at first pitch
@@ -9,12 +9,23 @@ const calculateBtn = document.getElementById('calculateBtn');
 const loadingIndicator = document.getElementById('loadingIndicator');
 const stadiumGrid = document.getElementById('stadiumGrid');
 
+/**
+ * Format a JS Date as a time string like "07:05 PM"
+ */
 function formatTime(date) {
     return date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
 }
+
+/**
+ * Format a JS Date as a string like "Tuesday, July 23"
+ */
 function formatDate(date) {
     return date.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
 }
+
+/**
+ * Render all stadium cards with logo, color status, drive time, and game info
+ */
 function renderStadiumCards(stadiumsData) {
     stadiumGrid.innerHTML = '';
     stadiumsData.forEach(stadium => {
@@ -25,6 +36,7 @@ function renderStadiumCards(stadiumsData) {
         let colorClass = 'bg-gray-400';
         let driveTimeDisplay = 'N/A';
         let gameDetails = 'Next Home Game: Loading...';
+        let logoPath = `/logos/${stadium.id.toLowerCase()}.svg`;
 
         if (stadium.driveDurationMinutes !== undefined && stadium.nextHomeGameFirstPitchTime) {
             const currentTime = new Date();
@@ -40,9 +52,11 @@ function renderStadiumCards(stadiumsData) {
                 colorClass = 'status-red';
             }
 
-            driveTimeDisplay = `${Math.round(stadium.driveDurationMinutes)} min`;
+            // Show drive time in hours if over 60 minutes, else in minutes
             if (stadium.driveDurationMinutes >= 60) {
                 driveTimeDisplay = `${(stadium.driveDurationMinutes / 60).toFixed(1)} hrs`;
+            } else {
+                driveTimeDisplay = `${Math.round(stadium.driveDurationMinutes)} min`;
             }
 
             gameDetails = `
@@ -53,6 +67,7 @@ function renderStadiumCards(stadiumsData) {
         }
 
         card.innerHTML = `
+            <img src="${logoPath}" alt="${stadium.team} logo" class="mx-auto mb-2 w-12 h-12" onerror="this.style.display='none'"/>
             <div class="status-indicator ${colorClass}"></div>
             <h3 class="text-lg font-semibold text-gray-800 mb-1 flex items-center justify-center">
                 <span class="baseball-icon">⚾</span> ${stadium.name}
@@ -81,6 +96,9 @@ calculateBtn.addEventListener('click', async () => {
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ startLocation })
         });
+        if (!response.ok) {
+            throw new Error("Server error");
+        }
         const stadiums = await response.json();
         renderStadiumCards(stadiums);
     } catch (err) {
