@@ -1,0 +1,343 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MLB Zen Art: Live Drive Time</title>
+    <!-- Tailwind CSS CDN for easy styling -->
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            font-family: 'Inter', sans-serif;
+            background-color: #f0f2f5;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            padding: 20px;
+            box-sizing: border-box;
+        }
+        .container {
+            background-color: #ffffff;
+            border-radius: 12px;
+            box-shadow: 0 10px 25px rgba(0, 0, 0, 0.1);
+            padding: 30px;
+            width: 100%;
+            max-width: 1200px;
+        }
+        .stadium-card {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            padding: 15px;
+            border-radius: 8px;
+            background-color: #f9fafb;
+            box-shadow: 0 2px 5px rgba(0, 0, 0, 0.05);
+            transition: transform 0.2s ease-in-out, box-shadow 0.2s ease-in-out;
+            cursor: pointer;
+            text-align: center;
+            min-height: 200px; /* Increased height to accommodate more text */
+        }
+        .stadium-card:hover {
+            transform: translateY(-5px);
+            box-shadow: 0 4px 10px rgba(0, 0, 0, 0.1);
+        }
+        .status-indicator {
+            width: 20px;
+            height: 20px;
+            border-radius: 50%;
+            margin-bottom: 8px;
+            border: 2px solid #cbd5e1; /* Light gray border */
+        }
+        .status-green { background-color: #10b981; } /* Emerald 500 */
+        .status-yellow { background-color: #f59e0b; } /* Amber 500 */
+        .status-red { background-color: #ef4444; } /* Red 500 */
+
+        .tooltip {
+            position: absolute;
+            background-color: rgba(0, 0, 0, 0.8);
+            color: white;
+            padding: 8px 12px;
+            border-radius: 6px;
+            font-size: 0.85rem;
+            white-space: nowrap;
+            z-index: 10;
+            opacity: 0;
+            pointer-events: none;
+            transition: opacity 0.2s ease-in-out;
+            transform: translate(-50%, -10px); /* Position above the card */
+            display: flex;
+            flex-direction: column;
+            align-items: flex-start; /* Align text to the left within tooltip */
+        }
+        .tooltip p {
+            margin: 0;
+            line-height: 1.3;
+        }
+        .stadium-card:hover .tooltip {
+            opacity: 1;
+        }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <h1 class="text-3xl font-bold text-gray-800 mb-6 text-center">MLB Zen Art: Live Drive Time</h1>
+        <p class="text-gray-600 text-center mb-8">Visualize your ability to reach each MLB team's next home game, based on current drive times.</p>
+
+        <div class="flex flex-col md:flex-row items-center justify-center gap-4 mb-8">
+            <input type="text" id="startLocation" placeholder="Your Starting Address (e.g., 123 Main St, Brooklyn, NY 11201)" class="p-3 border border-gray-300 rounded-md shadow-sm focus:ring-blue-500 focus:border-blue-500 w-full md:w-auto">
+            <button id="calculateBtn" class="px-6 py-3 bg-blue-600 text-white font-semibold rounded-md shadow-md hover:bg-blue-700 transition duration-200">
+                Calculate Zen
+            </button>
+        </div>
+
+        <div id="loadingIndicator" class="text-center text-gray-500 mb-4 hidden">
+            Calculating live drive times...
+        </div>
+
+        <div class="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-4" id="stadiumGrid">
+            <!-- Stadium cards will be dynamically inserted here by JavaScript -->
+        </div>
+
+        <div class="mt-8 text-center text-gray-600 text-sm">
+            <p>Green: Arrive &gt;= 1 hour before first pitch</p>
+            <p>Yellow: Arrive between 59 mins before and first pitch</p>
+            <p>Red: Arrive after first pitch</p>
+            <p class="mt-4">Data is illustrative. Real-time data requires a backend service with a mapping API.</p>
+            <p class="mt-2 text-xs text-gray-500">**This application is designed to be free to run, leveraging free tiers of cloud services and APIs.**</p>
+        </div>
+    </div>
+
+    <script>
+        // --- Configuration ---
+        // Full list of MLB Teams for opponent simulation
+        const MLB_TEAMS_FULL = [
+            'Arizona Diamondbacks', 'Atlanta Braves', 'Baltimore Orioles', 'Boston Red Sox', 'Chicago Cubs',
+            'Chicago White Sox', 'Cincinnati Reds', 'Cleveland Guardians', 'Colorado Rockies', 'Detroit Tigers',
+            'Houston Astros', 'Kansas City Royals', 'Los Angeles Angels', 'Los Angeles Dodgers', 'Miami Marlins',
+            'Milwaukee Brewers', 'Minnesota Twins', 'New York Mets', 'New York Yankees', 'Oakland Athletics',
+            'Philadelphia Phillies', 'Pittsburgh Pirates', 'San Diego Padres', 'San Francisco Giants', 'Seattle Mariners',
+            'St. Louis Cardinals', 'Tampa Bay Rays', 'Texas Rangers', 'Toronto Blue Jays', 'Washington Nationals'
+        ];
+
+        // Placeholder for MLB Stadiums with their approximate addresses/coordinates
+        // In a real application, you'd fetch this from a more robust source or an API.
+        const MLB_STADIUMS = [
+            { id: 'ATL', name: 'Truist Park', teamName: 'Atlanta Braves', city: 'Atlanta', state: 'GA', address: '755 Battery Ave SE, Atlanta, GA 30339', ticketLink: 'https://www.mlb.com/braves/tickets' },
+            { id: 'BAL', name: 'Oriole Park at Camden Yards', teamName: 'Baltimore Orioles', city: 'Baltimore', state: 'MD', address: '333 W Camden St, Baltimore, MD 21201', ticketLink: 'https://www.mlb.com/orioles/tickets' },
+            { id: 'BOS', name: 'Fenway Park', teamName: 'Boston Red Sox', city: 'Boston', state: 'MA', address: '4 Jersey St, Boston, MA 02215', ticketLink: 'https://www.mlb.com/redsox/tickets' },
+            { id: 'CHC', name: 'Wrigley Field', teamName: 'Chicago Cubs', city: 'Chicago', state: 'IL', address: '1060 W Addison St, Chicago, IL 60613', ticketLink: 'https://www.mlb.com/cubs/tickets' },
+            { id: 'CWS', name: 'Guaranteed Rate Field', teamName: 'Chicago White Sox', city: 'Chicago', state: 'IL', address: '333 W 35th St, Chicago, IL 60616', ticketLink: 'https://www.mlb.com/whitesox/tickets' },
+            { id: 'CIN', name: 'Great American Ball Park', teamName: 'Cincinnati Reds', city: 'Cincinnati', state: 'OH', address: '100 Joe Nuxhall Way, Cincinnati, OH 45202', ticketLink: 'https://www.mlb.com/reds/tickets' },
+            { id: 'CLE', name: 'Progressive Field', teamName: 'Cleveland Guardians', city: 'Cleveland', state: 'OH', address: '2401 Ontario St, Cleveland, OH 44115', ticketLink: 'https://www.mlb.com/guardians/tickets' },
+            { id: 'COL', name: 'Coors Field', teamName: 'Colorado Rockies', city: 'Denver', state: 'CO', address: '2001 Blake St, Denver, CO 80205', ticketLink: 'https://www.mlb.com/rockies/tickets' },
+            { id: 'DET', name: 'Comerica Park', teamName: 'Detroit Tigers', city: 'Detroit', state: 'MI', address: '2100 Woodward Ave, Detroit, MI 48201', ticketLink: 'https://www.mlb.com/tigers/tickets' },
+            { id: 'HOU', name: 'Minute Maid Park', teamName: 'Houston Astros', city: 'Houston', state: 'TX', address: '501 Crawford St, Houston, TX 77002', ticketLink: 'https://www.mlb.com/astros/tickets' },
+            { id: 'KC', name: 'Kauffman Stadium', teamName: 'Kansas City Royals', city: 'Kansas City', state: 'MO', address: '1 Royal Way, Kansas City, MO 64129', ticketLink: 'https://www.mlb.com/royals/tickets' },
+            { id: 'LAA', name: 'Angel Stadium', teamName: 'Los Angeles Angels', city: 'Anaheim', state: 'CA', address: '2000 E Gene Autry Way, Anaheim, CA 92806', ticketLink: 'https://www.mlb.com/angels/tickets' },
+            { id: 'LAD', name: 'Dodger Stadium', teamName: 'Los Angeles Dodgers', city: 'Los Angeles', state: 'CA', address: '1000 Vin Scully Ave, Los Angeles, CA 90012', ticketLink: 'https://www.mlb.com/dodgers/tickets' },
+            { id: 'MIA', name: 'loanDepot Park', teamName: 'Miami Marlins', city: 'Miami', state: 'FL', address: '501 Marlins Way, Miami, FL 33125', ticketLink: 'https://www.mlb.com/marlins/tickets' },
+            { id: 'MIL', name: 'American Family Field', teamName: 'Milwaukee Brewers', city: 'Milwaukee', state: 'WI', address: '1 Brewers Way, Milwaukee, WI 53214', ticketLink: 'https://www.mlb.com/brewers/tickets' },
+            { id: 'MIN', name: 'Target Field', teamName: 'Minnesota Twins', city: 'Minneapolis', state: 'MN', address: '1 Twins Way, Minneapolis, MN 55403', ticketLink: 'https://www.mlb.com/twins/tickets' },
+            { id: 'NYM', name: 'Citi Field', teamName: 'New York Mets', city: 'Flushing', state: 'NY', address: '41-01 126th St, Flushing, NY 11368', ticketLink: 'https://www.mlb.com/mets/tickets' },
+            { id: 'NYY', name: 'Yankee Stadium', teamName: 'New York Yankees', city: 'Bronx', state: 'NY', address: '1 E 161 St, Bronx, NY 10451', ticketLink: 'https://www.mlb.com/yankees/tickets' },
+            { id: 'OAK', name: 'Oakland Coliseum', teamName: 'Oakland Athletics', city: 'Oakland', state: 'CA', address: '7000 Coliseum Way, Oakland, CA 94621', ticketLink: 'https://www.mlb.com/athletics/tickets' },
+            { id: 'PHI', name: 'Citizens Bank Park', teamName: 'Philadelphia Phillies', city: 'Philadelphia', state: 'PA', address: '1 Citizens Bank Way, Philadelphia, PA 19148', ticketLink: 'https://www.mlb.com/phillies/tickets' },
+            { id: 'PIT', name: 'PNC Park', teamName: 'Pittsburgh Pirates', city: 'Pittsburgh', state: 'PA', address: '115 Federal St, Pittsburgh, PA 15212', ticketLink: 'https://www.mlb.com/pirates/tickets' },
+            { id: 'SD', name: 'Petco Park', teamName: 'San Diego Padres', city: 'San Diego', state: 'CA', address: '19 Tony Gwynn Way, San Diego, CA 92101', ticketLink: 'https://www.mlb.com/padres/tickets' },
+            { id: 'SEA', name: 'T-Mobile Park', teamName: 'Seattle Mariners', city: 'Seattle', state: 'WA', address: '1250 1st Ave S, Seattle, WA 98134', ticketLink: 'https://www.mlb.com/mariners/tickets' },
+            { id: 'SF', name: 'Oracle Park', teamName: 'San Francisco Giants', city: 'San Francisco', state: 'CA', address: '24 Willie Mays Plaza, San Francisco, CA 94107', ticketLink: 'https://www.mlb.com/giants/tickets' },
+            { id: 'STL', name: 'Busch Stadium', teamName: 'St. Louis Cardinals', city: 'St. Louis', state: 'MO', address: '700 Clark St, St. Louis, MO 63102', ticketLink: 'https://www.mlb.com/cardinals/tickets' },
+            { id: 'TB', name: 'Tropicana Field', teamName: 'Tampa Bay Rays', city: 'St. Petersburg', state: 'FL', address: '1 Tropicana Dr, St. Petersburg, FL 33705', ticketLink: 'https://www.mlb.com/rays/tickets' },
+            { id: 'TEX', name: 'Globe Life Field', teamName: 'Texas Rangers', city: 'Arlington', state: 'TX', address: '734 Stadium Dr, Arlington, TX 76011', ticketLink: 'https://www.mlb.com/rangers/tickets' },
+            { id: 'TOR', name: 'Rogers Centre', teamName: 'Toronto Blue Jays', city: 'Toronto', state: 'ON', address: '1 Blue Jays Way, Toronto, ON M5V 1J1, Canada', ticketLink: 'https://www.mlb.com/bluejays/tickets' },
+            { id: 'WAS', name: 'Nationals Park', teamName: 'Washington Nationals', city: 'Washington', state: 'DC', address: '1500 S Capitol St SE, Washington, DC 20003', ticketLink: 'https://www.mlb.com/nationals/tickets' },
+            { id: 'ARI', name: 'Chase Field', teamName: 'Arizona Diamondbacks', city: 'Phoenix', state: 'AZ', address: '401 E Jefferson St, Phoenix, AZ 85004', ticketLink: 'https://www.mlb.com/dbacks/tickets' }
+        ];
+
+        // Drive time thresholds relative to first pitch (in minutes)
+        const GREEN_THRESHOLD_MINUTES_BEFORE_PITCH = 60; // Arrive 1 hour or more before first pitch
+        const YELLOW_THRESHOLD_MINUTES_BEFORE_PITCH = 0;  // Arrive between 59 minutes before and exactly at first pitch
+
+        // --- DOM Elements ---
+        const startLocationInput = document.getElementById('startLocation');
+        const calculateBtn = document.getElementById('calculateBtn');
+        const loadingIndicator = document.getElementById('loadingIndicator');
+        const stadiumGrid = document.getElementById('stadiumGrid');
+
+        // --- Functions ---
+
+        // Helper to format time for display
+        function formatTime(date) {
+            return date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: true });
+        }
+
+        // Helper to format date for display (e.g., "Monday, July 21")
+        function formatDate(date) {
+            return date.toLocaleDateString('en-US', { weekday: 'long', month: 'long', day: 'numeric' });
+        }
+
+        // Renders the stadium cards based on provided data (which should already be sorted)
+        function renderStadiumCards(stadiumsData) {
+            stadiumGrid.innerHTML = ''; // Clear existing cards
+            stadiumsData.forEach(stadium => {
+                const card = document.createElement('div');
+                card.className = 'stadium-card relative'; // Added relative for tooltip positioning
+                card.dataset.stadiumId = stadium.id;
+
+                let colorClass = 'bg-gray-400'; // Default grey
+                let driveTimeDisplay = 'N/A';
+                let gameDetails = 'Next Home Game: Loading...';
+                let ticketLinkHtml = '';
+
+                if (stadium.driveDurationMinutes !== undefined) {
+                    const currentTime = new Date(); // Use current time for arrival calculation
+                    const arrivalTime = new Date(currentTime.getTime() + stadium.driveDurationMinutes * 60 * 1000);
+                    const minutesDifference = (stadium.simulatedFirstPitchTime.getTime() - arrivalTime.getTime()) / (1000 * 60);
+
+                    if (minutesDifference >= GREEN_THRESHOLD_MINUTES_BEFORE_PITCH) {
+                        colorClass = 'status-green';
+                    } else if (minutesDifference >= YELLOW_THRESHOLD_MINUTES_BEFORE_PITCH) {
+                        colorClass = 'status-yellow';
+                    } else {
+                        colorClass = 'status-red';
+                    }
+
+                    driveTimeDisplay = `${Math.round(stadium.driveDurationMinutes)} min`;
+                    if (stadium.driveDurationMinutes >= 60) {
+                         driveTimeDisplay = `${(stadium.driveDurationMinutes / 60).toFixed(1)} hrs`;
+                    }
+
+                    gameDetails = `
+                        <p class="font-semibold">${stadium.teamName} vs. ${stadium.nextHomeGameOpponent}</p>
+                        <p>${formatDate(stadium.simulatedFirstPitchTime)} - ${formatTime(stadium.simulatedFirstPitchTime)}</p>
+                        <p class="mt-2 text-xs text-gray-400">Est. Arrival: ${formatTime(arrivalTime)}</p>
+                    `;
+
+                    ticketLinkHtml = `<a href="${stadium.ticketLink}" target="_blank" class="text-blue-500 hover:underline text-sm mt-2">Buy Tickets</a>`;
+                }
+
+
+                card.innerHTML = `
+                    <div class="status-indicator ${colorClass}"></div>
+                    <h3 class="text-lg font-semibold text-gray-800 mb-1">${stadium.name}</h3>
+                    <p class="text-sm text-gray-600">${stadium.city}, ${stadium.state}</p>
+                    <p class="text-md font-bold text-gray-700 mt-2" data-drive-time>${driveTimeDisplay}</p>
+                    ${ticketLinkHtml}
+                    <div class="tooltip absolute bottom-full left-1/2 -translate-x-1/2 mb-2">
+                        ${gameDetails}
+                    </div>
+                `;
+                stadiumGrid.appendChild(card);
+            });
+        }
+
+        // Simulates fetching real-time data and updates the cards
+        async function calculateZen() {
+            const startLocation = startLocationInput.value.trim();
+            if (!startLocation) {
+                alert('Please enter your starting address (e.g., 123 Main St, Brooklyn, NY 11201)!');
+                return;
+            }
+
+            loadingIndicator.classList.remove('hidden');
+            calculateBtn.disabled = true; // Disable button during calculation
+
+            // --- SIMULATED DATA FOR DEMONSTRATION ---
+            // In a real application, you would make a fetch call to your backend Cloud Function here:
+            // const response = await fetch('YOUR_CLOUD_FUNCTION_ENDPOINT', {
+            //     method: 'POST',
+            //     headers: { 'Content-Type': 'application/json' },
+            //     body: JSON.stringify({ startLocation: startLocation, stadiums: MLB_STADIUMS })
+            // });
+            // const data = await response.json(); // This data would contain real drive times and next game info
+            const simulatedResults = await simulateDriveTimeCalculation(startLocation);
+            // --- END SIMULATED DATA ---
+
+            // Combine original stadium data with simulated results
+            const stadiumsWithCalculatedData = MLB_STADIUMS.map(stadium => {
+                const result = simulatedResults[stadium.id] || {};
+                return {
+                    ...stadium,
+                    driveDurationMinutes: result.driveDurationMinutes,
+                    simulatedFirstPitchTime: result.simulatedFirstPitchTime,
+                    nextHomeGameOpponent: result.nextHomeGameOpponent
+                };
+            });
+
+            // Sort stadiums by drive duration before rendering
+            stadiumsWithCalculatedData.sort((a, b) => {
+                if (a.driveDurationMinutes === undefined || b.driveDurationMinutes === undefined) {
+                    return 0; // Keep original order if data is missing
+                }
+                return a.driveDurationMinutes - b.driveDurationMinutes;
+            });
+
+            renderStadiumCards(stadiumsWithCalculatedData);
+
+            loadingIndicator.classList.add('hidden');
+            calculateBtn.disabled = false;
+        }
+
+        // Simulates API call and returns random drive times and next game info
+        async function simulateDriveTimeCalculation(startLocation) {
+            console.log(`Simulating drive times from: ${startLocation}`);
+            const results = {};
+
+            for (const stadium of MLB_STADIUMS) {
+                // Simulate next home game date and time
+                const nextGameDate = new Date();
+                // Randomly pick a day within the next 1-10 days
+                nextGameDate.setDate(nextGameDate.getDate() + Math.floor(Math.random() * 10) + 1);
+                // Randomly pick a first pitch hour (e.g., 1 PM to 8 PM)
+                nextGameDate.setHours(Math.floor(Math.random() * (20 - 13 + 1)) + 13, 0, 0, 0); // 13-20 for 1 PM - 8 PM
+
+                // Simulate drive time in minutes
+                let driveTimeMinutes;
+                const scenario = Math.random(); // 0-1 for random scenario
+                if (scenario < 0.33) { // ~33% chance for Green (arrive early)
+                    driveTimeMinutes = Math.floor(Math.random() * 60) + 1; // 1 to 60 minutes
+                } else if (scenario < 0.66) { // ~33% chance for Yellow (arrive close to pitch)
+                    driveTimeMinutes = Math.floor(Math.random() * 120) + 61; // 61 to 180 minutes (1hr 1min to 3 hours)
+                } else { // ~33% chance for Red (arrive late)
+                    driveTimeMinutes = Math.floor(Math.random() * 360) + 181; // 181 to 540 minutes (3hr 1min to 9 hours)
+                }
+                
+                // Add some extra random travel time to make it more 'live'
+                driveTimeMinutes += Math.floor(Math.random() * 30);
+
+                // Simulate opponent (ensure it's not the home team)
+                let opponent = stadium.teamName;
+                while (opponent === stadium.teamName) {
+                    opponent = MLB_TEAMS_FULL[Math.floor(Math.random() * MLB_TEAMS_FULL.length)];
+                }
+
+                results[stadium.id] = {
+                    driveDurationMinutes: driveTimeMinutes,
+                    simulatedFirstPitchTime: nextGameDate,
+                    nextHomeGameOpponent: opponent
+                };
+                await new Promise(resolve => setTimeout(resolve, 20)); // Small delay to simulate network
+            }
+            return results;
+        }
+
+
+        // --- Event Listeners ---
+        document.addEventListener('DOMContentLoaded', () => {
+            // Render initial cards without calculated data (grey state)
+            renderStadiumCards(MLB_STADIUMS);
+        });
+        calculateBtn.addEventListener('click', calculateZen);
+        startLocationInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                calculateZen();
+            }
+        });
+    </script>
+</body>
+</html>
+
+	
